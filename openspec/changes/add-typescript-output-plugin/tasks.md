@@ -35,7 +35,7 @@
 
 - [x] 5.1 Scaffold `packages/plugin-typescript` as the independently publishable `@opalesce/plugin-typescript` package with the workspace Nx, package, TypeScript, Vitest, license, changelog, and export configuration used by focused libraries.
 - [x] 5.2 Add dependencies on `@opalesce/core` and TypeScript plus the required workspace references and lockfile metadata.
-- [x] 5.3 Implement `TypeScriptPluginOptions` with only readonly `outputPath?: string`, defaulting to `types`.
+- [x] 5.3 Implement `TypeScriptPluginOptions` with only readonly `output?: string`, defaulting to `types`.
 - [x] 5.4 Implement the default `typescript` factory with literal plugin name `typescript` and generation from `context.interaction` only.
 - [x] 5.5 Add stable plugin error codes carrying source pointer and identity, format, reference, naming, or projection details.
 - [x] 5.6 Add direct-package runtime, compile-time export, default-path, custom-path, and contract-consumption tests.

@@ -28,7 +28,7 @@ types/
   index.ts
 ```
 
-Use `typescript({ outputPath: "generated/contracts" })` to change the root directory.
+Use `typescript({ output: "generated/contracts" })` to change the root directory.
 
 The plugin emits:
 

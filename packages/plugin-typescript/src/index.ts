@@ -6,14 +6,14 @@ export { TypeScriptGenerationError } from "./errors.js";
 export type { TypeScriptGenerationErrorCode, TypeScriptGenerationErrorOptions } from "./errors.js";
 
 export interface TypeScriptPluginOptions {
-  readonly outputPath?: string;
+  readonly output?: string;
 }
 
 function generate(
   context: PluginContext,
   options: TypeScriptPluginOptions,
 ): readonly GeneratedArtifact[] {
-  const files = planFiles(context.interaction, options.outputPath ?? "types");
+  const files = planFiles(context.interaction, options.output ?? "types");
   return Object.freeze(
     files.map((file) =>
       Object.freeze({

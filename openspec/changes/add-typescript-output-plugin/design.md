@@ -78,11 +78,11 @@ The `@opalesce/plugin-typescript` package default-exports `typescript` and expor
 
 ```ts
 interface TypeScriptPluginOptions {
-  readonly outputPath?: string;
+  readonly output?: string;
 }
 ```
 
-`outputPath` defaults to `types`.
+`output` defaults to `types`.
 
 ### Modelina is not a first-delivery dependency
 

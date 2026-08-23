@@ -46,7 +46,7 @@ Kubb currently exposes these main controls:
 
 | Concern         | Kubb behavior                                              | Opalesce first-delivery decision                                |
 | --------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
-| Output          | File or directory mode, path, barrel, banner, footer       | Directory only, `outputPath`, fixed named barrel                |
+| Output          | File or directory mode, path, barrel, banner, footer       | Directory only, `output`, fixed named barrel                    |
 | Grouping        | By OpenAPI tag or path in directory mode                   | Do not copy; no equivalent stable AsyncAPI policy is needed yet |
 | Declarations    | `syntaxType: 'type' \| 'interface'`, default `type`        | Type aliases only                                               |
 | Optional fields | Question token, `undefined`, or both                       | Question token only                                             |
@@ -65,7 +65,7 @@ Kubb supports one consolidated file or one file per schema and operation. Direct
 
 Barrel files are TypeScript-specific `index.ts` artifacts. The implementation sorts the file tree and named exports before printing: [barrel extensions and filename](https://github.com/kubb-labs/kubb/blob/52558cd52ce46edbd809c85bd4c80c68c36f6435/packages/plugin-barrel/src/utils.ts#L7-L8), [tree sorting](https://github.com/kubb-labs/kubb/blob/52558cd52ce46edbd809c85bd4c80c68c36f6435/packages/plugin-barrel/src/utils.ts#L47-L98), [named export sorting](https://github.com/kubb-labs/kubb/blob/52558cd52ce46edbd809c85bd4c80c68c36f6435/packages/plugin-barrel/src/utils.ts#L139-L177).
 
-Opalesce should start with directory output because the requested AsyncAPI contract has several independently reusable root kinds. A consolidated mode would add merge ordering and duplicate-symbol policy without helping the first use case. It can be added later as an explicit option, not inferred from the extension of `outputPath`.
+Opalesce should start with directory output because the requested AsyncAPI contract has several independently reusable root kinds. A consolidated mode would add merge ordering and duplicate-symbol policy without helping the first use case. It can be added later as an explicit option, not inferred from the extension of `output`.
 
 ### Naming and wire keys
 
@@ -226,7 +226,7 @@ import typescript from "@opalesce/plugin-typescript";
 export default defineConfig({
   input: "./asyncapi.yaml",
   output: { path: "./generated" },
-  plugins: [typescript({ outputPath: "types" })],
+  plugins: [typescript({ output: "types" })],
 });
 ```
 
@@ -236,7 +236,7 @@ First-release options should contain only:
 
 ```ts
 export type TypeScriptPluginOptions = {
-  outputPath?: string;
+  output?: string;
 };
 ```
 

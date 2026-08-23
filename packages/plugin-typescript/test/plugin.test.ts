@@ -91,7 +91,7 @@ describe("typescript", () => {
         asyncapi: "3.1.0",
         info: { title: "Empty", version: "1.0.0" },
       },
-      plugins: [typescript({ outputPath: "generated/contracts" })],
+      plugins: [typescript({ output: "generated/contracts" })],
     });
 
     expect(result.artifacts).toEqual([{ path: "generated/contracts/index.ts", contents: "\n" }]);

@@ -4,7 +4,7 @@
 
 ### Requirement: Consumers configure the independently published TypeScript plugin
 
-The workspace SHALL provide `@opalesce/plugin-typescript` as an independently publishable ESM package whose default export is a typed plugin factory named `typescript` and which exports `TypeScriptPluginOptions`. The `opalesce` facade SHALL NOT depend on or re-export output plugins. The options contract SHALL contain only an optional readonly `outputPath` string in this delivery, and the plugin name exposed to Core SHALL be `typescript`.
+The workspace SHALL provide `@opalesce/plugin-typescript` as an independently publishable ESM package whose default export is a typed plugin factory named `typescript` and which exports `TypeScriptPluginOptions`. The `opalesce` facade SHALL NOT depend on or re-export output plugins. The options contract SHALL contain only an optional readonly `output` string in this delivery, and the plugin name exposed to Core SHALL be `typescript`.
 
 The plugin SHALL consume the Core-owned `context.interaction` contract and SHALL NOT construct another normalized document model.
 
@@ -16,7 +16,7 @@ The plugin SHALL consume the Core-owned `context.interaction` contract and SHALL
 
 #### Scenario: Configure a custom output path
 
-- **WHEN** a consumer calls `typescript({ outputPath: "generated/contracts" })`
+- **WHEN** a consumer calls `typescript({ output: "generated/contracts" })`
 - **THEN** every returned artifact is rooted below `generated/contracts`
 
 #### Scenario: Consume the plugin package directly
@@ -32,7 +32,7 @@ The plugin SHALL consume the Core-owned `context.interaction` contract and SHALL
 
 ### Requirement: Artifact paths mirror interaction ownership
 
-The plugin SHALL return a fixed directory layout beneath `outputPath`: `schemas/<Schema>.ts`, `messages/<Message>.ts`, `channels/<Channel>Parameters.ts`, `operations/<Operation>.ts`, and `index.ts`. It SHALL create one file for each public semantic root group and SHALL NOT create empty group directories or placeholder files.
+The plugin SHALL return a fixed directory layout beneath `output`: `schemas/<Schema>.ts`, `messages/<Message>.ts`, `channels/<Channel>Parameters.ts`, `operations/<Operation>.ts`, and `index.ts`. It SHALL create one file for each public semantic root group and SHALL NOT create empty group directories or placeholder files.
 
 #### Scenario: Generate a complete interaction tree
 

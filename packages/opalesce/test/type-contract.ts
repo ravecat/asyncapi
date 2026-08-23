@@ -36,7 +36,7 @@ const projectConfigFromSubpath = defineConfigFromSubpath({
     path: "./generated",
   },
 });
-const typescriptPlugin = typescript({ outputPath: "types" });
+const typescriptPlugin = typescript({ output: "types" });
 
 // @ts-expect-error Project config requires an output path.
 defineConfig({ input: "./asyncapi.yaml" });
@@ -52,6 +52,6 @@ export type PluginOptionsArePreserved = Expect<
   Equal<Parameters<typeof plugin>, [{ readonly path: string }]>
 >;
 export type TypeScriptOptionsArePreserved = Expect<
-  Equal<TypeScriptPluginOptions, { readonly outputPath?: string }>
+  Equal<TypeScriptPluginOptions, { readonly output?: string }>
 >;
 export type TypeScriptNameIsStable = Expect<Equal<typeof typescriptPlugin.name, "typescript">>;

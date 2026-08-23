@@ -11,7 +11,7 @@ type Equal<Left, Right> =
 type Expect<Value extends true> = Value;
 
 const defaultPlugin = typescript();
-const configuredPlugin = typescript({ outputPath: "generated/contracts" });
+const configuredPlugin = typescript({ output: "generated/contracts" });
 
 void defaultPlugin;
 void configuredPlugin;
@@ -22,5 +22,5 @@ export type PublicRuntimeExportsAreFocused = Expect<
 >;
 export type PluginNameIsStable = Expect<Equal<typeof defaultPlugin.name, "typescript">>;
 export type PluginOptionsAreReadonly = Expect<
-  Equal<TypeScriptPluginOptions, { readonly outputPath?: string }>
+  Equal<TypeScriptPluginOptions, { readonly output?: string }>
 >;

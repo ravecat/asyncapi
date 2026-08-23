@@ -122,9 +122,9 @@ function roleType(
 
 export function planFiles(
   interaction: InteractionContract,
-  outputPath: string,
+  output: string,
 ): readonly PlannedFile[] {
-  const root = outputPath.replace(/\/+$/u, "");
+  const root = output.replace(/\/+$/u, "");
   const projector = createSchemaProjector(interaction);
   const symbols = new Map<string, PublicSymbol>();
   const symbolIdentityByName = new Map<string, string>();
