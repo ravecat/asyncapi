@@ -1,0 +1,6 @@
+{
+  "input": "asyncapi.json",
+  "version": "2.6.0",
+  "tags": ["operation", "derived-operation", "self-recursive"],
+  "expected": { "kind": "success" }
+}

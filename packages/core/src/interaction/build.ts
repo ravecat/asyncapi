@@ -148,20 +148,55 @@ function channelIdentity(channel: ChannelInterface): string {
   return `channel:${requireName(channel.id(), "channel", pointer)}`;
 }
 
+function authoredOperationId(operation: OperationInterface): string | undefined {
+  const value: unknown = operation.json<unknown>();
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "operationId" in value &&
+    typeof value.operationId === "string" &&
+    value.operationId.length > 0
+  ) {
+    return value.operationId;
+  }
+  return undefined;
+}
+
+function operationIdentityAndName(
+  operation: OperationInterface,
+  operationChannelIdentity: string,
+  asyncapiVersion: InteractionAsyncAPIVersion,
+): { identity: string; name: string } {
+  const pointer = operation.meta("pointer");
+  // AsyncAPI 2.6 without an authored operationId falls back to the parser action
+  // value such as "publish" or "subscribe", which collides across channels. Derive
+  // a collision-free identity from the exact channel identity plus authored role.
+  if (asyncapiVersion === "2.6.0" && authoredOperationId(operation) === undefined) {
+    const channel = operation.channels().all()[0];
+    if (channel !== undefined) {
+      const role = operation.action();
+      return {
+        identity: `operation:${operationChannelIdentity}:${role}`,
+        name: `${requireName(channel.id(), "operation channel", pointer)}-${role}`,
+      };
+    }
+  }
+  const name = operationName(operation);
+  return { identity: `operation:${name}`, name };
+}
+
 function operationName(operation: OperationInterface): string {
   const id = operation.id();
   if (typeof id === "string" && id.length > 0) {
     return id;
   }
   const pointer = operation.meta("pointer");
-  const channel = operation.channels().all()[0];
-  if (channel === undefined) {
-    return requireName(undefined, "operation", pointer);
-  }
-  return `${channel.id()}-${operation.action()}`;
+  return requireName(undefined, "operation", pointer);
 }
 
-export function buildInteractionContract(document: AsyncAPIDocumentInterface): InteractionContract {
+export function buildInteractionContract(
+  document: AsyncAPIDocumentInterface,
+): InteractionContract {
   const asyncapiVersion = requireVersion(document.version());
   const schemaRegistry = createSchemaRegistry(
     document.components().schemas().all(),
@@ -297,8 +332,6 @@ export function buildInteractionContract(document: AsyncAPIDocumentInterface): I
 
   for (const operation of document.operations().all()) {
     const pointer = operation.meta("pointer");
-    const name = operationName(operation);
-    const identity = `operation:${name}`;
     const channel = operation.channels().all()[0];
     if (channel === undefined) {
       throw new InteractionContractError(
@@ -308,6 +341,11 @@ export function buildInteractionContract(document: AsyncAPIDocumentInterface): I
       );
     }
     const operationChannelIdentity = resolveChannelIdentity(channel);
+    const { identity, name } = operationIdentityAndName(
+      operation,
+      operationChannelIdentity,
+      asyncapiVersion,
+    );
     const messageIdentities = uniqueSorted(
       operation
         .messages()

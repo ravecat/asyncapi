@@ -159,6 +159,60 @@ describe("PluginContext.interaction", () => {
     expect(interaction.replies).toEqual([]);
   });
 
+  it("derives collision-free AsyncAPI 2.6 identities for same-role channels without operationId", async () => {
+    const interaction = await captureInteraction({
+      asyncapi: "2.6.0",
+      info: { title: "Same role", version: "1.0.0" },
+      channels: {
+        first: { publish: { message: { payload: { type: "string" } } } },
+        second: { publish: { message: { payload: { type: "string" } } } },
+        "a/b": { subscribe: { message: { payload: { type: "number" } } } },
+        "c~d": {
+          subscribe: { operationId: "authoredOp", message: { payload: { type: "boolean" } } },
+        },
+      },
+    });
+
+    // Distinct derived identities for same-role channels; authored operationId
+    // stays authoritative.
+    expect(interaction.operations.map((operation) => operation.identity)).toEqual([
+      "operation:authoredOp",
+      "operation:channel:a/b:subscribe",
+      "operation:channel:first:publish",
+      "operation:channel:second:publish",
+    ]);
+    expect(interaction.operations.map((operation) => operation.name)).toEqual([
+      "authoredOp",
+      "a/b-subscribe",
+      "first-publish",
+      "second-publish",
+    ]);
+    expect(interaction.operations).toContainEqual(
+      expect.objectContaining({
+        identity: "operation:authoredOp",
+        name: "authoredOp",
+        action: "receive",
+        pointer: "/channels/c~0d/subscribe",
+      }),
+    );
+    expect(interaction.operations).toContainEqual(
+      expect.objectContaining({
+        identity: "operation:channel:first:publish",
+        name: "first-publish",
+        action: "send",
+        pointer: "/channels/first/publish",
+      }),
+    );
+    expect(interaction.operations).toContainEqual(
+      expect.objectContaining({
+        identity: "operation:channel:a/b:subscribe",
+        name: "a/b-subscribe",
+        action: "receive",
+        pointer: "/channels/a~1b/subscribe",
+      }),
+    );
+  });
+
   it("normalizes AsyncAPI 3.0 with the same contract shape", async () => {
     const interaction = await captureInteraction({
       ...asyncapi31,
@@ -407,4 +461,5 @@ describe("PluginContext.interaction", () => {
 
     expect(parserSchemaIsFrozen).toBe(parserSchemaWasFrozen);
   });
+
 });

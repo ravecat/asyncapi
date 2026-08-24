@@ -1,0 +1,22 @@
+{
+  "asyncapi": "2.6.0",
+  "info": { "title": "Operation same role 2.6", "version": "1.0.0" },
+  "channels": {
+    "first": {
+      "publish": {
+        "message": {
+          "name": "First",
+          "payload": { "type": "object", "properties": { "id": { "type": "string" } } }
+        }
+      }
+    },
+    "second": {
+      "publish": {
+        "message": {
+          "name": "Second",
+          "payload": { "type": "object", "properties": { "id": { "type": "string" } } }
+        }
+      }
+    }
+  }
+}
