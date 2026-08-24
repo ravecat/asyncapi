@@ -57,11 +57,13 @@ Contract-owned arrays and metadata objects are recursively frozen. Parser-owned 
 
 ### Parser models remain authoritative
 
-The builder consumes only `PluginContext.document`. It uses parser models and `ModelMetadata.pointer` for resolved identities, applied traits, operation channels, effective message selections, and replies. It does not traverse unresolved source to reconstruct relationships already provided by the parser.
+The builder uses `PluginContext.document` as the semantic authority. It uses parser models and `ModelMetadata.pointer` for resolved identities, applied traits, operation channels, effective message selections, and replies. It does not reconstruct those relationships from unresolved source.
+
+For reference-provenance classification only, the builder may inspect the immutable authored snapshot already retained by Core or object-valued parser input metadata. This inspection answers whether the authored schema role contained `$ref`; it does not parse, resolve, fetch, or replace any parser-effective value. Source-less pre-parsed documents whose metadata contains only authored text remain outside that provable boundary.
 
 AsyncAPI 3.0 and 3.1 use channel, message, and operation map identities. AsyncAPI 2.6 uses component names and `operationId` where present; otherwise exact channel identity plus publish or subscribe provides a deterministic operation identity. Publish normalizes to `send`, and subscribe normalizes to `receive`.
 
-The contract records foreign schema formats without converting them. A target plugin chooses whether to support a format. A resolved external model is usable only if parser metadata provides a stable identity; otherwise construction fails rather than resolving again.
+The contract records foreign schema formats without converting them. A target plugin chooses whether to support a format. A provably resolved external model is usable only if it maps to a stable representable identity; otherwise construction fails rather than resolving again.
 
 ### Focused dependency direction prevents cycles
 
@@ -192,16 +194,84 @@ A facade-owned integration fixture imports configuration helpers from `opalesce`
 - [External identities are unstable] -> Fail without another resolution path.
 - [Compiler printer output changes] -> Pin TypeScript through the lockfile and review exact golden changes on upgrades.
 
-## Implementation Review Follow-ups
+## Acceptance Correction Designs
 
-The first implementation review found four acceptance defects that remain part of this delivery rather than optional post-delivery enhancements:
+The first implementation review found four acceptance defects that remain part of this delivery rather than optional follow-up enhancements. Feature #13 remains incomplete until all four corrections pass their focused and complete-corpus oracles.
 
-- [#14](https://github.com/ravecat/opalesce/issues/14) - derive AsyncAPI 2.6 operation identities from the exact channel identity and publish or subscribe role when `operationId` is absent. Parser fallback IDs such as `publish` and `subscribe` are not authored identities and cannot distinguish same-role operations on different channels.
-- [#15](https://github.com/ravecat/opalesce/issues/15) - make the target-AST assignability check structural enough to widen incompatible schema-valued `additionalProperties` to `unknown` before rendering. Successful generation must not return TypeScript that fails strict semantic compilation.
-- [#16](https://github.com/ravecat/opalesce/issues/16) - assign owner-scoped private identities and declarations to recursive anonymous schemas. These declarations remain in the owning file and never enter the public barrel.
-- [#17](https://github.com/ravecat/opalesce/issues/17) - distinguish ordinary anonymous inline schemas from parser-resolved reference targets and reject a resolved target that has no stable representable interaction identity without invoking another resolver.
+### #14 derives AsyncAPI 2.6 operation identity before target naming
 
-Each correction requires a focused Core or plugin regression plus coverage in the complete strict-compilation corpus. Feature #13 remains incomplete until all four behaviors satisfy the capability specifications.
+The parser gives an AsyncAPI 2.6 operation without `operationId` the fallback ID `publish` or `subscribe`. Core must not use that value as authored identity. The operation builder first checks whether the raw operation object has a non-empty authored `operationId`. If present, identity and name remain `operation:<operationId>` and `<operationId>`. Otherwise it uses:
+
+```text
+identity = operation:<channel-identity>:<authored-role>
+name = <exact-channel-key>-<authored-role>
+pointer = /channels/<escaped-channel-key>/<authored-role>
+```
+
+`channel-identity` already retains the exact unescaped map key. The pointer independently uses RFC 6901 escaping. This yields distinct Core registry keys and distinct PascalCase TypeScript operation names before the filename table is built. No suffixing or iteration-order fallback is permitted. AsyncAPI 3 operation map keys and authored AsyncAPI 2.6 IDs remain unchanged.
+
+### #17 classifies provable external references from retained provenance
+
+The official parser replaces `$ref` with the resolved schema object and may assign only a generated ID such as `<anonymous-schema-1>`. The resolved model alone cannot distinguish an external target from an authored inline schema. Core therefore builds a read-only authored-reference index once per interaction construction from data it already owns:
+
+1. Use `PluginContext.source.data` when present.
+2. Otherwise use `document.meta("asyncapi").input` only when it is already an object.
+3. Do not parse string metadata, invoke another parser, or call a resolver.
+
+The index records schema-role pointers whose authored value is a `$ref` plus the exact reference string. Normalization still reads every semantic value from the official parser model. When the index proves that a role originated from an external reference and the resolved model does not map to a component or owner-scoped local dependency, Core throws `INTERACTION_REFERENCE_UNSUPPORTED` with the role pointer and `{ referenceKind: "schema", reference }`. The lazy interaction getter caches and attributes that error through the consuming plugin boundary.
+
+This fix deliberately does not reject all anonymous models. A source-less pre-parsed official document with string-valued parser input metadata cannot provide proof after the parser erases `$ref`; preserving current behavior is less destructive than rejecting ordinary inline schemas. That unverifiable boundary is documented and covered as a no-regression control. Supporting external targets requires a future resolved-resource identity registry.
+
+### #15 proves index compatibility over the complete target AST
+
+`targetKey` remains useful for deterministic union deduplication but cannot decide assignability because its object key currently omits nested property types and modifiers. Introduce a separate terminating structural relation over `TargetType` pairs. It handles literals and primitives, unions in the safe direction, arrays, tuples, object requiredness and nested property types, object index values, and equal symbolic reference identities. Documentation and `readonly` metadata do not alter represented value compatibility. Intersections, different reference identities, and any unhandled relation fail conservatively.
+
+The relation is used only to decide whether a schema-valued `additionalProperties` candidate is safe for every fixed property. Failure widens the candidate to `unknown`; it does not fail generation. Pair memoization or symbolic-reference comparison prevents recursive graphs from expanding. Both native parser models and Draft 07 raw projection call the same relation.
+
+### #16 plans recursive anonymous graphs before projection
+
+Projection needs an owner-local graph phase before recursive descent. The owner is one public schema identity, message payload identity, or message headers identity. Graph nodes are keyed by parser object identity and canonical pointer; edges follow the same schema-child vocabulary already traversed by Core. Strongly connected components identify anonymous self-cycles and mutual cycles. Named component targets retain public identities. Acyclic anonymous nodes remain inline.
+
+Every anonymous member of a recursive component receives:
+
+```text
+identity = schema:private:<owner-identity>:<relative-pointer>
+name = <owner-public-name><role-aware-relative-path>
+visibility = file-local
+```
+
+Role-aware path tokens include property keys, item positions, composition branch and index, additional properties, and definitions. The existing Unicode and collision policy applies before rendering and rejects private collisions without counters. Add visibility to the planned declaration contract so the renderer omits `export` for private aliases. Private aliases are emitted in the owning schema or message file, are absent from the root barrel, never require imports, and refer to each other symbolically. Public declarations and barrel behavior remain unchanged.
+
+## Regression Corpus Plan
+
+The corpus is split by ownership rather than duplicated across packages:
+
+- `packages/core/test/fixtures/interaction-cases.ts` owns small raw-input builders, exact Core summaries, source snapshots, and resolver counters for #14 and #17.
+- `packages/core/test/interaction.test.ts` asserts identities, pointers, dependencies, error details, lazy attribution, source-less controls, and zero additional resolution.
+- `packages/plugin-typescript/test/projection.test.ts` owns table-driven target-AST compatibility and owner-graph unit matrices for #15 and #16.
+- `packages/plugin-typescript/test/fixtures/corpus/cases/*` owns only representative end-to-end inputs and complete golden trees. Existing `corpus.ts` remains the single manifest loader, orphan-file guard, repeated-run harness, diagnostic matcher, and strict NodeNext compiler harness.
+- Core tests do not import plugin fixtures, and plugin tests do not import Core test helpers. Equivalent behavior is repeated only where a separate package boundary has a distinct oracle.
+
+### Required data and oracles
+
+| Case                                     | Input and purpose                                                                                                                        | Expected Core oracle                                                                                                                     | Expected TypeScript or diagnostic oracle                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `operation-same-role-2.6`                | `first.publish` and `second.publish` without `operationId`                                                                               | Identities `operation:channel:first:publish` and `operation:channel:second:publish`, exact pointers, `send`, distinct message selections | Golden `FirstPublish.ts` and `SecondPublish.ts`, both barrel exports, strict compile, repeated bytes |
+| `operation-mixed-2.6`                    | One channel with both roles, another authored `operationId`, and `/` plus `~` in channel keys                                            | Derived role identities remain distinct, authored ID remains authoritative, identity keys stay exact while pointers are escaped          | Focused naming assertions and no filename collision                                                  |
+| `operation-control-3.x`                  | Equivalent 3.0 and 3.1 top-level `sendEvent` operations                                                                                  | Identity remains `operation:sendEvent`; replies and selections unchanged                                                                 | Existing 3.0 and 3.1 golden trees remain byte-identical                                              |
+| `structured-index-compatible`            | Nested objects with equal required properties, arrays, tuples, unions, equal references, and nested index values                         | No Core contract change                                                                                                                  | Typed index retained and strict compilation succeeds                                                 |
+| `structured-index-incompatible`          | `{ value: string }` fixed value against `{ value: number }`, optional-to-required mismatch, tuple and union mismatch, unequal references | No Core contract change                                                                                                                  | Index widens to `unknown`; complete tree compiles and matches golden bytes                           |
+| `structured-index-cross-version`         | Equivalent native 2.6, native 3.0, and Draft 07 3.1 schemas                                                                              | Equivalent schema roles and formats retained                                                                                             | Equal retain-or-widen decisions through the shared target-AST relation                               |
+| `anonymous-recursion-schema`             | 3.1 schema-owned self-cycle and mutual anonymous cycle through properties, arrays, and composition                                       | Existing public dependency identities remain unchanged                                                                                   | File-local private aliases, no private barrel export, no self-import, strict compile, repeated bytes |
+| `anonymous-recursion-message`            | 2.6 message payload and headers owning recursive anonymous nodes                                                                         | Message roles retain exact pointers and owner                                                                                            | Private aliases remain in the message file while payload, headers, and wrapper stay public           |
+| `anonymous-recursion-control-3.0`        | Acyclic anonymous nesting plus named component recursion                                                                                 | Public identities and dependencies remain stable                                                                                         | Acyclic shapes remain inline and component references remain public                                  |
+| `anonymous-private-collision`            | Two recursive paths under one owner normalize to one private symbol                                                                      | No Core failure                                                                                                                          | Atomic `TYPESCRIPT_SYMBOL_COLLISION` with both identities and pointers                               |
+| `external-reference-provable`            | Raw object and raw string inputs with `memory://schemas/Payload` resolver for 2.6, 3.0, and 3.1 where accepted                           | `INTERACTION_REFERENCE_UNSUPPORTED` at authored role pointer with exact URI; parser read count unchanged by interaction access           | Plugin execution attributes the Core error, returns no artifacts, and repeats equal diagnostics      |
+| `external-reference-inline-control`      | Equivalent ordinary inline anonymous payloads                                                                                            | Contract succeeds with owner-scoped roles and no false reference edge                                                                    | Existing generation succeeds and repeats identical bytes                                             |
+| `external-reference-local-control`       | Component, self-recursive, and mutual local references                                                                                   | Existing stable dependency identities and cycles remain                                                                                  | Public and private symbolic output remains compilable                                                |
+| `external-reference-source-less-control` | Existing official document passed without inspectable authored snapshot                                                                  | Current interaction behavior is preserved; no blanket anonymous rejection                                                                | Explicitly documents the unverifiable external-origin boundary                                       |
+
+The manifest must distinguish interaction-construction errors from TypeScript generation errors so #17 asserts `InteractionContractError` through `PluginExecutionError`, while existing plugin failures continue to assert `TypeScriptGenerationError`. Successful corpus entries run twice, compare complete paths and bytes, compile with `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `isolatedModules`, and NodeNext module settings, and include representative positive and `@ts-expect-error` consumers. Failure entries run twice and compare code, pointer, and details while accepting no partial tree.
 
 ## Migration Plan
 
@@ -211,8 +281,12 @@ Each correction requires a focused Core or plugin regression plus coverage in th
 4. Keep the `opalesce` facade limited to Core, configuration, and orchestration exports.
 5. Add CLI and consumer compilation coverage using the facade and independent plugin package together, then run focused plus aggregate validation.
 6. Document the context field, package boundary, plugin import, output surface, and validation limitations.
+7. Establish the shared acceptance corpus metadata and Core fixture builders before changing the four failing behaviors.
+8. Correct #14 operation identity and #17 provable external-reference rejection in Core, then lock their identities, pointers, diagnostics, and resolver-call counts.
+9. Correct #15 structural index compatibility and #16 anonymous recursion in the TypeScript projector and planner, then lock complete golden trees and strict compilation.
+10. Run unchanged cross-version controls, aggregate repository validation, strict OpenSpec validation, and issue reconciliation before returning #13 to review.
 
-Rollback removes the additive context getter, Core contract modules and exports, facade type exports, and the TypeScript plugin package. Existing persisted artifacts require no migration.
+Rollback of the additive feature removes the context getter, Core contract modules and exports, facade type exports, and the TypeScript plugin package. Rollback of an individual acceptance correction reverts its implementation and new corpus entries together; existing persisted artifacts require no migration.
 
 ## Open Questions
 

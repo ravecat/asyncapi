@@ -23,6 +23,10 @@ TypeScript and the planned Zod output must interpret those entities identically.
 
 - `asyncapi-interaction-contract`: Core-owned immutable interaction semantics shared by target plugins through `PluginContext.interaction`.
 - `typescript-interaction-output`: Deterministic TypeScript contracts for the AsyncAPI entities required to exchange data with external systems.
+- `asyncapi-2-6-operation-identity`: Collision-free Core identities and downstream TypeScript names for AsyncAPI 2.6 operations without authored `operationId` values, closing #14.
+- `typescript-structural-index-compatibility`: Conservative structural compatibility for schema-valued index signatures so successful output remains strictly compilable, closing #15.
+- `typescript-anonymous-recursion`: Owner-scoped private declarations for recursive anonymous schema graphs in schema and message files, closing #16.
+- `asyncapi-external-reference-identity`: Fail-closed handling of provable externally resolved anonymous schema references whose stable identities were erased by parser resolution, closing #17.
 
 ### Modified Capabilities
 

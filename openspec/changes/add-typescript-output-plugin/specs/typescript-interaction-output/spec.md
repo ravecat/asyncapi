@@ -71,12 +71,6 @@ Every named component schema SHALL produce one public type alias, whether or not
 - **THEN** that declaration is available within the owning file
 - **AND** the root barrel exports only the named component schema alias
 
-#### Scenario: Preserve recursive anonymous dependencies
-
-- **WHEN** a schema-owned or message-owned anonymous schema references itself or another anonymous schema in the same owner graph
-- **THEN** the plugin assigns deterministic owner-scoped private declarations and symbolic references
-- **AND** those declarations remain in the owning file, stay out of the root barrel, and compile without recursive expansion
-
 ### Requirement: Messages expose payload, application headers, and a wrapper
 
 Every reusable or effective channel message SHALL produce `<Message>Payload` and `<Message>Message`. It SHALL also produce `<Message>Headers` when the message declares application headers. The wrapper SHALL always have `payload: <Message>Payload` and SHALL have `headers: <Message>Headers` only when application headers exist.
@@ -197,30 +191,14 @@ The plugin SHALL map `const` and enums to literals or literal unions, `allOf` to
 - **THEN** the plugin does not add fields to those branches
 - **AND** it documents the discriminator metadata in deterministic JSDoc
 
-### Requirement: Additional properties have a safe fixed policy
+### Requirement: Boolean additional-properties values have a safe fixed policy
 
-`additionalProperties: true` SHALL produce a string index signature with `unknown`. A schema-valued `additionalProperties` SHALL use its projected value type only when all fixed properties are assignable to that index value, otherwise it SHALL widen the index value to `unknown`. `additionalProperties: false` SHALL emit no index signature and SHALL NOT claim exact-object enforcement.
+`additionalProperties: true` SHALL produce a string index signature with `unknown`. `additionalProperties: false` SHALL emit no index signature and SHALL NOT claim exact-object enforcement. Schema-valued additional-properties compatibility is governed by the structural index compatibility capability.
 
 #### Scenario: Generate an open object
 
 - **WHEN** an object allows arbitrary additional properties
 - **THEN** its type contains `[key: string]: unknown`
-
-#### Scenario: Generate compatible typed additional properties
-
-- **WHEN** an object has typed additional properties and every fixed property is compatible with that type
-- **THEN** its index signature retains the projected additional-property value type
-
-#### Scenario: Widen an incompatible index signature
-
-- **WHEN** a fixed property is not assignable to the typed additional-property value
-- **THEN** the index signature uses `unknown` rather than making the fixed property invalid
-
-#### Scenario: Compare structured index values by represented type
-
-- **WHEN** a fixed property and a schema-valued `additionalProperties` entry are objects with equal property names but incompatible nested property types or modifiers
-- **THEN** the compatibility check does not treat their shallow names as proof of assignability
-- **AND** the index signature widens to `unknown` so the complete generated tree compiles under strict TypeScript settings
 
 #### Scenario: Approximate a closed object
 

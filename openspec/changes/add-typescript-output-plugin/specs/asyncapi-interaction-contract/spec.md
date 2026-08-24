@@ -113,22 +113,6 @@ Each public root SHALL expose a kind-qualified logical identity, source pointer,
 - **WHEN** an AsyncAPI 3 operation is stored under a top-level operation map key
 - **THEN** its identity retains that exact key and source pointer
 
-#### Scenario: Derive an AsyncAPI 2.6 operation identity
-
-- **WHEN** an AsyncAPI 2.6 operation has no `operationId`
-- **THEN** its identity is derived from the exact channel identity and publish or subscribe role
-
-#### Scenario: Scope same-role AsyncAPI 2.6 operations by channel
-
-- **WHEN** two AsyncAPI 2.6 channels each define publish operations or each define subscribe operations without `operationId`
-- **THEN** the operations have distinct identities that retain their exact channel identities and authored roles
-- **AND** a parser fallback ID such as `publish` or `subscribe` is not treated as an authored operation identity
-
-#### Scenario: Preserve an authored AsyncAPI 2.6 operation ID
-
-- **WHEN** an AsyncAPI 2.6 operation declares a non-empty `operationId`
-- **THEN** its identity retains that authored value instead of replacing it with the derived channel-and-role identity
-
 ### Requirement: Parser-effective semantics determine relationships
 
 Core SHALL use the official parsed document as the authority for resolved references, applied traits, channels, operation-selected messages, and reply-selected messages. Contract construction MUST NOT parse the document again or reimplement effective relationships from unresolved source when the parser model already exposes them.
@@ -167,18 +151,6 @@ Schema roles SHALL retain their readonly official `SchemaInterface`, effective s
 - **WHEN** schema roots reference themselves or one another cyclically
 - **THEN** construction completes without serializing a cyclic parser graph
 - **AND** dependency identities preserve the cycle
-
-#### Scenario: Reject an unrepresentable target
-
-- **WHEN** a parser-resolved reference has no stable representable identity
-- **THEN** construction fails with an unsupported-reference code and source pointer
-- **AND** Core performs no additional resolution
-
-#### Scenario: Reject an externally resolved anonymous target
-
-- **WHEN** the parser resolves an external schema reference to a model that is not a representable component or owner-scoped interaction dependency
-- **THEN** contract construction fails with `INTERACTION_REFERENCE_UNSUPPORTED` at the authored schema-role pointer
-- **AND** the contract does not silently expose that model as an anonymous schema with an empty dependency collection
 
 ### Requirement: Schema formats remain target-neutral
 
