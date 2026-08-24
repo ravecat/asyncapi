@@ -133,25 +133,123 @@ function combine(kind: "intersection" | "union", members: readonly TargetType[])
   return Object.freeze({ kind, members: Object.freeze(values) });
 }
 
+// Conservative terminating structural subtyping over the target AST, used only to
+// decide whether a schema-valued index candidate is safe for every fixed property.
+// The widening direction returns false when the relation is unproven so generation
+// falls back to `unknown` instead of emitting an uncompilable index signature.
 function isAssignableTo(source: TargetType, target: TargetType): boolean {
+  return assignable(source, target, new Set());
+}
+
+function assignable(source: TargetType, target: TargetType, seen: Set<string>): boolean {
   if (target.kind === "unknown" || source.kind === "never") {
     return true;
   }
-  if (source.kind === target.kind && targetKey(source) === targetKey(target)) {
-    return true;
+  const pairKey = `${targetKey(source)}>${targetKey(target)}`;
+  if (seen.has(pairKey)) {
+    return false;
   }
-  if (source.kind === "literal") {
-    return (
-      (typeof source.value === "string" && target.kind === "string") ||
-      (typeof source.value === "number" && target.kind === "number") ||
-      (typeof source.value === "boolean" && target.kind === "boolean") ||
-      (source.value === null && target.kind === "null")
+  seen.add(pairKey);
+  try {
+    return assignableChecked(source, target, seen);
+  } finally {
+    seen.delete(pairKey);
+  }
+}
+
+function assignableChecked(source: TargetType, target: TargetType, seen: Set<string>): boolean {
+  switch (source.kind) {
+    case "unknown":
+      return target.kind === "unknown";
+    case "never":
+      return true;
+    case "string":
+    case "number":
+    case "boolean":
+    case "null":
+      return target.kind === source.kind;
+    case "literal":
+      return assignableLiteral(source, target);
+    case "reference":
+      return target.kind === "reference" && source.targetIdentity === target.targetIdentity;
+    case "array":
+      return target.kind === "array" && assignable(source.item, target.item, seen);
+    case "tuple":
+      if (target.kind === "array") {
+        return source.items.every((item) => assignable(item, target.item, seen));
+      }
+      if (target.kind === "tuple") {
+        return (
+          source.items.length === target.items.length &&
+          source.items.every((item, index) =>
+            assignable(item, target.items[index] ?? UNKNOWN, seen),
+          )
+        );
+      }
+      return false;
+    case "union":
+      return source.members.every((member) =>
+        target.kind === "union"
+          ? target.members.some((candidate) => assignable(member, candidate, seen))
+          : assignable(member, target, seen),
+      );
+    case "intersection":
+      return false;
+    case "object":
+      return target.kind === "object" && objectAssignable(source, target, seen);
+    default: {
+      const exhaustive: never = source;
+      return exhaustive;
+    }
+  }
+}
+
+function assignableLiteral(
+  source: Extract<TargetType, { kind: "literal" }>,
+  target: TargetType,
+): boolean {
+  switch (target.kind) {
+    case "literal":
+      return source.value === target.value;
+    case "string":
+      return typeof source.value === "string";
+    case "number":
+      return typeof source.value === "number";
+    case "boolean":
+      return typeof source.value === "boolean";
+    case "null":
+      return source.value === null;
+    default:
+      return false;
+  }
+}
+
+function objectAssignable(
+  source: Extract<TargetType, { kind: "object" }>,
+  target: Extract<TargetType, { kind: "object" }>,
+  seen: Set<string>,
+): boolean {
+  for (const targetProperty of target.properties) {
+    const sourceProperty = source.properties.find(
+      (candidate) => candidate.name === targetProperty.name,
     );
+    if (sourceProperty === undefined) {
+      if (!targetProperty.optional) {
+        return false;
+      }
+      continue;
+    }
+    if (!targetProperty.optional && sourceProperty.optional) {
+      return false;
+    }
+    if (!assignable(sourceProperty.type, targetProperty.type, seen)) {
+      return false;
+    }
   }
-  if (source.kind === "union") {
-    return source.members.every((member) => isAssignableTo(member, target));
+  if (target.index !== undefined && source.index !== undefined) {
+    return assignable(source.index, target.index, seen);
   }
-  return false;
+  return true;
 }
 
 export function schemaDocumentation(schema: SchemaInterface): readonly string[] {

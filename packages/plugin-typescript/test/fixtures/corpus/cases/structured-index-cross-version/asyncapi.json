@@ -1,0 +1,41 @@
+{
+  "asyncapi": "3.1.0",
+  "info": { "title": "Structured index cross version", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "Compatible": {
+        "type": "object",
+        "properties": {
+          "fixed": { "type": "object", "properties": { "value": { "type": "string" } } }
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": { "value": { "type": "string" } }
+        }
+      },
+      "Incompatible": {
+        "type": "object",
+        "properties": {
+          "fixed": { "type": "object", "properties": { "value": { "type": "string" } } }
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": { "value": { "type": "number" } }
+        }
+      },
+      "Draft07": {
+        "schemaFormat": "application/schema+json;version=draft-07",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "fixed": { "type": "object", "properties": { "value": { "type": "string" } } }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": { "value": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

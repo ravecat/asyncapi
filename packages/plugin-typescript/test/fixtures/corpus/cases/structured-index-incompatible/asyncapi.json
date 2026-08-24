@@ -1,0 +1,49 @@
+{
+  "asyncapi": "3.1.0",
+  "info": { "title": "Structured index incompatible", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "IncompatibleNested": {
+        "type": "object",
+        "properties": {
+          "fixed": { "type": "object", "properties": { "value": { "type": "string" } } }
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": { "value": { "type": "number" } }
+        }
+      },
+      "OptionalToRequired": {
+        "type": "object",
+        "properties": {
+          "fixed": { "type": "object", "properties": { "value": { "type": "string" } } }
+        },
+        "additionalProperties": {
+          "type": "object",
+          "required": ["value"],
+          "properties": { "value": { "type": "string" } }
+        }
+      },
+      "ArrayIncompatible": {
+        "type": "object",
+        "properties": { "fixed": { "type": "array", "items": { "type": "string" } } },
+        "additionalProperties": { "type": "array", "items": { "type": "number" } }
+      },
+      "TupleIncompatible": {
+        "type": "object",
+        "properties": {
+          "fixed": { "type": "array", "items": [{ "type": "string" }, { "type": "number" }] }
+        },
+        "additionalProperties": {
+          "type": "array",
+          "items": [{ "type": "number" }, { "type": "number" }]
+        }
+      },
+      "UnionIncompatible": {
+        "type": "object",
+        "properties": { "fixed": { "type": ["string", "number"] } },
+        "additionalProperties": { "type": "string" }
+      }
+    }
+  }
+}

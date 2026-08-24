@@ -92,6 +92,96 @@ describe("schema projection", () => {
     );
   });
 
+  it("widens nested-index candidates that are structurally incompatible", async () => {
+    const matrix = {
+      asyncapi: "3.1.0",
+      info: { title: "Index matrix", version: "1.0.0" },
+      components: {
+        schemas: {
+          Compatible: {
+            type: "object",
+            properties: {
+              fixed: { type: "object", properties: { value: { type: "string" } } },
+            },
+            additionalProperties: { type: "object", properties: { value: { type: "string" } } },
+          },
+          IncompatibleNested: {
+            type: "object",
+            properties: {
+              fixed: { type: "object", properties: { value: { type: "string" } } },
+            },
+            additionalProperties: { type: "object", properties: { value: { type: "number" } } },
+          },
+          OptionalToRequired: {
+            type: "object",
+            properties: {
+              fixed: { type: "object", properties: { value: { type: "string" } } },
+            },
+            additionalProperties: {
+              type: "object",
+              required: ["value"],
+              properties: { value: { type: "string" } },
+            },
+          },
+          ArrayCompatible: {
+            type: "object",
+            properties: {
+              fixed: { type: "array", items: { type: "string" } },
+            },
+            additionalProperties: { type: "array", items: { type: "string" } },
+          },
+          ArrayIncompatible: {
+            type: "object",
+            properties: {
+              fixed: { type: "array", items: { type: "string" } },
+            },
+            additionalProperties: { type: "array", items: { type: "number" } },
+          },
+          TupleIncompatible: {
+            type: "object",
+            properties: {
+              fixed: { type: "array", items: [{ type: "string" }, { type: "number" }] },
+            },
+            additionalProperties: {
+              type: "array",
+              items: [{ type: "number" }, { type: "number" }],
+            },
+          },
+          UnionCompatible: {
+            type: "object",
+            properties: {
+              fixed: { type: ["string", "null"] },
+            },
+            additionalProperties: { type: ["string", "null"] },
+          },
+          UnionIncompatible: {
+            type: "object",
+            properties: {
+              fixed: { type: ["string", "number"] },
+            },
+            additionalProperties: { type: "string" },
+          },
+        },
+      },
+    } satisfies Input;
+
+    const expectIndex = async (name: string, pattern: RegExp): Promise<void> => {
+      const contents = await schemaContents(matrix, name);
+      // Anchor to the top-level index signature (two-space indentation) so we
+      // distinguish retained object candidates from widened `unknown` values.
+      expect(contents).toMatch(pattern);
+    };
+
+    await expectIndex("Compatible", /^ {2}\[key: string\]: \{$/mu);
+    await expectIndex("IncompatibleNested", /^ {2}\[key: string\]: unknown;$/mu);
+    await expectIndex("OptionalToRequired", /^ {2}\[key: string\]: unknown;$/mu);
+    await expectIndex("ArrayCompatible", /^ {2}\[key: string\]: string\[\];$/mu);
+    await expectIndex("ArrayIncompatible", /^ {2}\[key: string\]: unknown;$/mu);
+    await expectIndex("TupleIncompatible", /^ {2}\[key: string\]: unknown;$/mu);
+    await expectIndex("UnionCompatible", /^ {2}\[key: string\]: string \| null;$/mu);
+    await expectIndex("UnionIncompatible", /^ {2}\[key: string\]: unknown;$/mu);
+  });
+
   it("uses symbolic imports for mutual recursion", async () => {
     const result = await run({ input: projectionInput, plugins: [typescript()] });
     const left = result.artifacts.find((artifact) => artifact.path.endsWith("/Left.ts"));
