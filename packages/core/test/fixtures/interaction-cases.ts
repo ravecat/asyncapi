@@ -1,7 +1,7 @@
 import type { Input } from "../../src/index.js";
 
-// Reusable raw-input fixtures and expected interaction summaries for the #14
-// acceptance correction. These stay in Core so plugin tests do not import
+// Reusable raw-input fixtures and expected interaction summaries for the #14 and
+// #17 acceptance corrections. These stay in Core so plugin tests do not import
 // plugin fixtures and vice versa.
 
 export interface OperationIdentityCase {
@@ -60,3 +60,53 @@ export const operationIdentityMixedExpected: OperationIdentityCase = {
     "/channels/users~1{userId}/subscribe",
   ],
 };
+
+export interface ContractErrorExpectation {
+  readonly code: "INTERACTION_REFERENCE_UNSUPPORTED" | "INTERACTION_VERSION_UNSUPPORTED";
+  readonly pointer: string;
+  readonly details: Readonly<Record<string, string>>;
+}
+
+// #17: a channel message payload resolved from an external memory reference.
+export const externalReferenceInput = (): Input => ({
+  asyncapi: "3.1.0",
+  info: { title: "External", version: "1.0.0" },
+  channels: {
+    events: {
+      address: "events",
+      messages: { Event: { payload: { $ref: "memory://schemas/Payload" } } },
+    },
+  },
+  operations: {
+    sendEvent: {
+      action: "send",
+      channel: { $ref: "#/channels/events" },
+      messages: [{ $ref: "#/channels/events/messages/Event" }],
+    },
+  },
+});
+
+export const externalReferenceExpected: ContractErrorExpectation = {
+  code: "INTERACTION_REFERENCE_UNSUPPORTED",
+  pointer: "/channels/events/messages/Event/payload",
+  details: { referenceKind: "schema", reference: "memory://schemas/Payload" },
+};
+
+// #17 control: the same location defined inline (no external $ref) must succeed.
+export const externalReferenceInlineInput = (): Input => ({
+  asyncapi: "3.1.0",
+  info: { title: "Inline", version: "1.0.0" },
+  channels: {
+    events: {
+      address: "events",
+      messages: { Event: { payload: { type: "object", properties: { id: { type: "string" } } } } },
+    },
+  },
+  operations: {
+    sendEvent: {
+      action: "send",
+      channel: { $ref: "#/channels/events" },
+      messages: [{ $ref: "#/channels/events/messages/Event" }],
+    },
+  },
+});

@@ -7,7 +7,7 @@ import type {
   OperationInterface,
 } from "@asyncapi/parser";
 import { InteractionContractError } from "./errors.js";
-import { createSchemaRegistry } from "./schema.js";
+import { createSchemaRegistry, type AuthoredReferenceIndex } from "./schema.js";
 import type {
   ChannelContract,
   ChannelParameterContract,
@@ -18,10 +18,41 @@ import type {
   OperationContract,
   ReplyContract,
 } from "./types.js";
+import type { AsyncAPISource } from "../source.js";
 
 function parserObject(model: BaseModel): object | undefined {
   const value: unknown = model.json<unknown>();
   return typeof value === "object" && value !== null ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Collect every authored JSON pointer whose value is a `$ref`, using RFC 6901
+// escaping so keys align with parser model pointers. This is provenance only;
+// no parse, resolve, or fetch happens here.
+function collectAuthoredReferences(data: unknown): AuthoredReferenceIndex {
+  const index = new Map<string, string>();
+  const visit = (value: unknown, pointer: string): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${pointer}/${index}`));
+      return;
+    }
+    if (!isRecord(value)) {
+      return;
+    }
+    const reference = value.$ref;
+    if (typeof reference === "string" && reference.length > 0) {
+      index.set(pointer === "" ? "/" : pointer, reference);
+    }
+    for (const [key, child] of Object.entries(value)) {
+      const escapedKey = key.replaceAll("~", "~0").replaceAll("/", "~1");
+      visit(child, `${pointer === "" ? "" : pointer}/${escapedKey}`);
+    }
+  };
+  visit(data, "");
+  return index;
 }
 
 function requireVersion(version: string): InteractionAsyncAPIVersion {
@@ -194,13 +225,29 @@ function operationName(operation: OperationInterface): string {
   return requireName(undefined, "operation", pointer);
 }
 
+function authoredSourceData(
+  document: AsyncAPIDocumentInterface,
+  source: AsyncAPISource | undefined,
+): unknown {
+  if (source !== undefined) {
+    return source.data;
+  }
+  const metadata = document.meta("asyncapi");
+  const input: unknown = metadata?.input;
+  return isRecord(input) || Array.isArray(input) ? input : undefined;
+}
+
 export function buildInteractionContract(
   document: AsyncAPIDocumentInterface,
+  source?: AsyncAPISource,
 ): InteractionContract {
   const asyncapiVersion = requireVersion(document.version());
+  const authoredData = authoredSourceData(document, source);
+  const authoredReferences = collectAuthoredReferences(authoredData);
   const schemaRegistry = createSchemaRegistry(
     document.components().schemas().all(),
     asyncapiVersion,
+    authoredReferences,
   );
 
   const messageRegistry: MessageRegistry = {

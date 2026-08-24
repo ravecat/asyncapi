@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { run, type InteractionContract } from "../src/index.js";
 import {
+  InteractionContractError,
+  PluginExecutionError,
+  run,
+  type InteractionContract,
+} from "../src/index.js";
+import {
+  externalReferenceExpected,
+  externalReferenceInlineInput,
+  externalReferenceInput,
   operationIdentityMixedExpected,
   operationIdentitySameRoleExpected,
 } from "./fixtures/interaction-cases.js";
@@ -78,5 +86,65 @@ describe("issue #14 operation identity matrix", () => {
       identity: "operation:sendEvent",
       name: "sendEvent",
     });
+  });
+});
+
+describe("issue #17 external reference identity matrix", () => {
+  it("rejects a provable external anonymous target without additional resolution", async () => {
+    const reads: string[] = [];
+    const rejection = await run({
+      input: externalReferenceInput(),
+      parser: {
+        parse: { source: "memory://doc" },
+        parser: {
+          __unstable: {
+            resolver: {
+              resolvers: [
+                {
+                  schema: "memory",
+                  order: 1,
+                  read(uri: { toString(): string }) {
+                    reads.push(uri.toString());
+                    return JSON.stringify({
+                      type: "object",
+                      properties: { id: { type: "string" } },
+                    });
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+      plugins: [
+        {
+          name: "consumer",
+          generate(context) {
+            void context.interaction;
+            return [];
+          },
+        },
+      ],
+    }).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(PluginExecutionError);
+    if (!(rejection instanceof PluginExecutionError)) {
+      throw new Error("Expected PluginExecutionError.");
+    }
+    expect(rejection.pluginName).toBe("consumer");
+    expect(rejection.cause).toBeInstanceOf(InteractionContractError);
+    expect(rejection.cause).toMatchObject({
+      code: externalReferenceExpected.code,
+      pointer: externalReferenceExpected.pointer,
+    });
+    expect((rejection.cause as InteractionContractError).details).toEqual(
+      externalReferenceExpected.details,
+    );
+    expect(reads).toEqual(["memory://schemas/Payload"]);
+  });
+
+  it("builds an ordinary inline anonymous schema without a false reference edge", async () => {
+    const interaction = await captureInteraction(externalReferenceInlineInput());
+    expect(interaction.operations[0]?.messageIdentities.length).toBeGreaterThan(0);
   });
 });

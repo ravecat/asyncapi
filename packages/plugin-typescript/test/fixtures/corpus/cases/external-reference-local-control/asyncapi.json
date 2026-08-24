@@ -1,0 +1,25 @@
+{
+  "asyncapi": "3.1.0",
+  "info": { "title": "External reference local control", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": { "friend": { "$ref": "#/components/schemas/User" } }
+      }
+    }
+  },
+  "channels": {
+    "events": {
+      "address": "events",
+      "messages": { "Event": { "payload": { "$ref": "#/components/schemas/User" } } }
+    }
+  },
+  "operations": {
+    "sendEvent": {
+      "action": "send",
+      "channel": { "$ref": "#/channels/events" },
+      "messages": [{ "$ref": "#/channels/events/messages/Event" }]
+    }
+  }
+}

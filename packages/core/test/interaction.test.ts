@@ -336,6 +336,102 @@ describe("PluginContext.interaction", () => {
     });
   });
 
+  it("fail-closes provable external reference targets without additional resolution", async () => {
+    const reads: string[] = [];
+    const parserOptions = {
+      __unstable: {
+        resolver: {
+          resolvers: [
+            {
+              schema: "memory",
+              order: 1,
+              read(uri: { toString(): string }) {
+                reads.push(uri.toString());
+                return JSON.stringify({ type: "object", properties: { id: { type: "string" } } });
+              },
+            },
+          ],
+        },
+      },
+    };
+    const input: Input = {
+      asyncapi: "3.1.0",
+      info: { title: "External", version: "1.0.0" },
+      channels: {
+        events: {
+          address: "events",
+          messages: { Event: { payload: { $ref: "memory://schemas/Payload" } } },
+        },
+      },
+      operations: {
+        sendEvent: {
+          action: "send",
+          channel: { $ref: "#/channels/events" },
+          messages: [{ $ref: "#/channels/events/messages/Event" }],
+        },
+      },
+    };
+
+    const rejection = await run({
+      input,
+      parser: { parse: { source: "memory://doc" }, parser: parserOptions },
+      plugins: [
+        {
+          name: "consumer",
+          generate(context) {
+            void context.interaction;
+            return [];
+          },
+        },
+      ],
+    }).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(PluginExecutionError);
+    if (!(rejection instanceof PluginExecutionError)) {
+      throw new Error("Expected PluginExecutionError.");
+    }
+    expect(rejection.pluginName).toBe("consumer");
+    expect(rejection.cause).toBeInstanceOf(InteractionContractError);
+    const cause = rejection.cause as InteractionContractError;
+    expect(cause).toMatchObject({
+      code: "INTERACTION_REFERENCE_UNSUPPORTED",
+      pointer: "/channels/events/messages/Event/payload",
+    });
+    expect(cause.details).toEqual({
+      referenceKind: "schema",
+      reference: "memory://schemas/Payload",
+    });
+    // The resolver is read only by the initial parse; interaction construction adds none.
+    expect(reads).toEqual(["memory://schemas/Payload"]);
+  });
+
+  it("keeps local component and inline anonymous references without false rejection", async () => {
+    const input: Input = {
+      asyncapi: "3.1.0",
+      info: { title: "Local", version: "1.0.0" },
+      components: { schemas: { User: { type: "object", properties: { id: { type: "string" } } } } },
+      channels: {
+        events: {
+          address: "events",
+          messages: {
+            Local: { payload: { $ref: "#/components/schemas/User" } },
+            Inline: { payload: { type: "string" } },
+          },
+        },
+      },
+      operations: {
+        sendEvent: {
+          action: "send",
+          channel: { $ref: "#/channels/events" },
+          messages: [{ $ref: "#/channels/events/messages/Inline" }],
+        },
+      },
+    };
+
+    const interaction = await captureInteraction(input);
+    expect(interaction.schemas.map((schema) => schema.identity)).toEqual(["schema:component:User"]);
+  });
+
   it("produces equal identities and order for equivalent parsed documents", async () => {
     const first = await captureInteraction(asyncapi31);
     const second = await captureInteraction(asyncapi31);
@@ -462,4 +558,45 @@ describe("PluginContext.interaction", () => {
     expect(parserSchemaIsFrozen).toBe(parserSchemaWasFrozen);
   });
 
+  it("preserves current anonymous inline behavior for source-less pre-parsed documents", async () => {
+    const input: Input = {
+      asyncapi: "3.1.0",
+      info: { title: "Source-less", version: "1.0.0" },
+      channels: {
+        events: {
+          address: "events",
+          messages: { Event: { payload: { type: "string" } } },
+        },
+      },
+      operations: {
+        sendEvent: {
+          action: "send",
+          channel: { $ref: "#/channels/events" },
+          messages: [{ $ref: "#/channels/events/messages/Event" }],
+        },
+      },
+    };
+    // Pass an already-parsed official document so Core has no retained authored
+    // snapshot and cannot prove the origin of an anonymous inline schema.
+    const { parseAsyncAPI } = await import("../src/parseAsyncAPI.js");
+    let interaction: InteractionContract | undefined;
+    const sourceLess = await run({
+      input: (await parseAsyncAPI(input)).document,
+      plugins: [
+        {
+          name: "capture",
+          generate(context) {
+            interaction = context.interaction;
+            return [];
+          },
+        },
+      ],
+    });
+
+    expect(sourceLess.source).toBeUndefined();
+    // The contract still builds: an unresolved anonymous inline schema is not
+    // blanket-rejected when no authored provenance can prove its origin.
+    expect(interaction).toBeDefined();
+    expect(interaction?.operations[0]?.messageIdentities.length).toBeGreaterThan(0);
+  });
 });

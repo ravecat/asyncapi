@@ -28,7 +28,7 @@ export async function run(config: PipelineConfig): Promise<PipelineResult> {
       throw interactionError;
     }
     try {
-      interaction = buildInteractionContract(parsed.document);
+      interaction = buildInteractionContract(parsed.document, parsed.source);
       return interaction;
     } catch (error: unknown) {
       interactionError = error;

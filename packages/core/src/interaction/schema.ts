@@ -1,4 +1,5 @@
 import type { SchemaInterface } from "@asyncapi/parser";
+import { InteractionContractError } from "./errors.js";
 import type {
   InteractionAsyncAPIVersion,
   SchemaContract,
@@ -14,6 +15,12 @@ interface ComponentSchemaIdentity {
 export interface SchemaRegistry {
   readonly roots: readonly SchemaContract[];
   createRole(schema: SchemaInterface): SchemaRoleContract;
+}
+
+export type AuthoredReferenceIndex = ReadonlyMap<string, string>;
+
+function isExternalReference(reference: string): boolean {
+  return !reference.startsWith("#");
 }
 
 function parserObject(schema: SchemaInterface): object | undefined {
@@ -106,6 +113,7 @@ function sortDependencies(
 export function createSchemaRegistry(
   schemas: readonly SchemaInterface[],
   asyncapiVersion: InteractionAsyncAPIVersion,
+  authoredReferences: AuthoredReferenceIndex = new Map(),
 ): SchemaRegistry {
   const identityByObject = new WeakMap<object, ComponentSchemaIdentity>();
   const identityBySchemaId = new Map<string, ComponentSchemaIdentity>();
@@ -130,6 +138,24 @@ export function createSchemaRegistry(
       }
     }
     return identityBySchemaId.get(schema.id());
+  };
+
+  // #17: fail closed when authored provenance proves this schema role originated
+  // from an external $ref and the resolved model maps to no stable component or
+  // owner-scoped local identity. Uses the already-retained pointer/URI only.
+  const assertProvenance = (schema: SchemaInterface, pointer: string): void => {
+    const authoredReference = authoredReferences.get(pointer);
+    if (authoredReference === undefined || !isExternalReference(authoredReference)) {
+      return;
+    }
+    const target = findComponent(schema);
+    if (target === undefined) {
+      throw new InteractionContractError(
+        "INTERACTION_REFERENCE_UNSUPPORTED",
+        `The schema reference at ${pointer} resolves to an unrepresentable external target.`,
+        { pointer, details: { referenceKind: "schema", reference: authoredReference } },
+      );
+    }
   };
 
   const collectDependencies = (root: SchemaInterface): readonly SchemaDependencyContract[] => {
@@ -180,13 +206,16 @@ export function createSchemaRegistry(
     return sortDependencies(dependencies);
   };
 
-  const createRole = (schema: SchemaInterface): SchemaRoleContract =>
-    Object.freeze({
-      pointer: schema.meta("pointer"),
+  const createRole = (schema: SchemaInterface): SchemaRoleContract => {
+    const pointer = schema.meta("pointer");
+    assertProvenance(schema, pointer);
+    return Object.freeze({
+      pointer,
       schemaFormat: effectiveSchemaFormat(schema),
       schema,
       dependencies: collectDependencies(schema),
     });
+  };
 
   const roots = Object.freeze(
     [...schemas]
