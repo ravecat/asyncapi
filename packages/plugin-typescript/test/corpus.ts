@@ -1,5 +1,6 @@
 import { access, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import type { InteractionContractErrorCode } from "@opalesce/core";
 import type { TypeScriptGenerationErrorCode } from "../src/errors.js";
 
 interface CorpusSuccessExpectation {
@@ -7,11 +8,19 @@ interface CorpusSuccessExpectation {
   readonly artifacts: readonly { readonly file: string; readonly path: string }[];
 }
 
-interface CorpusErrorExpectation {
-  readonly kind: "error";
+interface CorpusPluginErrorExpectation {
+  readonly kind: "plugin-error";
   readonly code: TypeScriptGenerationErrorCode;
   readonly pointer: string;
 }
+
+interface CorpusCoreErrorExpectation {
+  readonly kind: "core-error";
+  readonly code: InteractionContractErrorCode;
+  readonly pointer: string;
+}
+
+type CorpusErrorExpectation = CorpusPluginErrorExpectation | CorpusCoreErrorExpectation;
 
 export interface CorpusCase {
   readonly id: string;
@@ -19,6 +28,7 @@ export interface CorpusCase {
   readonly version: string;
   readonly tags: readonly string[];
   readonly schemaParser?: "avro" | "draft07-unchecked";
+  readonly resolver?: boolean;
   readonly expected: CorpusErrorExpectation | CorpusSuccessExpectation;
 }
 
@@ -42,7 +52,7 @@ function relativeFile(record: Record<string, unknown>, field: string, pointer: s
   return value;
 }
 
-function errorCode(value: string, pointer: string): TypeScriptGenerationErrorCode {
+function pluginErrorCode(value: string, pointer: string): TypeScriptGenerationErrorCode {
   switch (value) {
     case "TYPESCRIPT_FILENAME_COLLISION":
     case "TYPESCRIPT_FORMAT_UNSUPPORTED":
@@ -53,6 +63,17 @@ function errorCode(value: string, pointer: string): TypeScriptGenerationErrorCod
       return value;
     default:
       throw new TypeError(`${pointer} must be a known TypeScript generation error code.`);
+  }
+}
+
+function coreErrorCode(value: string, pointer: string): InteractionContractErrorCode {
+  switch (value) {
+    case "INTERACTION_IDENTITY_MISSING":
+    case "INTERACTION_REFERENCE_UNSUPPORTED":
+    case "INTERACTION_VERSION_UNSUPPORTED":
+      return value;
+    default:
+      throw new TypeError(`${pointer} must be a known interaction contract error code.`);
   }
 }
 
@@ -67,14 +88,21 @@ function expectation(
   if (kind === "success") {
     return { kind, artifacts: Object.freeze([]) };
   }
-  if (kind === "error") {
+  if (kind === "plugin-error") {
     return {
       kind,
-      code: errorCode(stringField(value, "code", pointer), `${pointer}/code`),
+      code: pluginErrorCode(stringField(value, "code", pointer), `${pointer}/code`),
       pointer: stringField(value, "pointer", pointer),
     };
   }
-  throw new TypeError(`${pointer}/kind must be "success" or "error".`);
+  if (kind === "core-error") {
+    return {
+      kind,
+      code: coreErrorCode(stringField(value, "code", pointer), `${pointer}/code`),
+      pointer: stringField(value, "pointer", pointer),
+    };
+  }
+  throw new TypeError(`${pointer}/kind must be "success", "plugin-error", or "core-error".`);
 }
 
 function decodeCase(value: unknown, id: string): CorpusCase {
@@ -91,6 +119,9 @@ function decodeCase(value: unknown, id: string): CorpusCase {
       `${pointer}/schemaParser must be "avro" or "draft07-unchecked" when present.`,
     );
   }
+  if (value.resolver !== undefined && typeof value.resolver !== "boolean") {
+    throw new TypeError(`${pointer}/resolver must be a boolean when present.`);
+  }
   if (!Array.isArray(value.tags) || !value.tags.every((tag) => typeof tag === "string")) {
     throw new TypeError(`${pointer}/tags must be an array of strings.`);
   }
@@ -100,6 +131,7 @@ function decodeCase(value: unknown, id: string): CorpusCase {
     version: stringField(value, "version", pointer),
     tags: Object.freeze([...value.tags]),
     ...(value.schemaParser === undefined ? {} : { schemaParser: value.schemaParser }),
+    ...(value.resolver === undefined ? {} : { resolver: value.resolver }),
     expected: expectation(value.expected, `${pointer}/expected`),
   };
 }
@@ -139,7 +171,7 @@ export async function loadCorpus(): Promise<readonly CorpusCase[]> {
       await readFile(new URL(`${entry.name}/case.json`, CASES_ROOT), "utf8"),
     );
     const decoded = decodeCase(parsed, entry.name);
-    if (decoded.expected.kind === "error") {
+    if (decoded.expected.kind === "plugin-error" || decoded.expected.kind === "core-error") {
       cases.push(Object.freeze(decoded));
       continue;
     }

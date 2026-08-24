@@ -1,13 +1,62 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { PluginExecutionError, run } from "@opalesce/core";
+import { InteractionContractError, PluginExecutionError, run } from "@opalesce/core";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import typescript, { TypeScriptGenerationError } from "../src/index.js";
 import { assertCorpusFiles, caseFileUrl, loadCorpus } from "./corpus.js";
 
 const corpus = await loadCorpus();
+
+function resolverOptions() {
+  const reads: string[] = [];
+  return {
+    reads,
+    parser: {
+      __unstable: {
+        resolver: {
+          resolvers: [
+            {
+              schema: "memory",
+              order: 1,
+              read(uri: { toString(): string }) {
+                reads.push(uri.toString());
+                return JSON.stringify({ type: "object", properties: { id: { type: "string" } } });
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
+function coreError(rejection: unknown): InteractionContractError {
+  expect(rejection).toBeInstanceOf(PluginExecutionError);
+  if (!(rejection instanceof PluginExecutionError)) {
+    throw new Error("Expected PluginExecutionError.");
+  }
+  expect(rejection.pluginName).toBe("typescript");
+  expect(rejection.cause).toBeInstanceOf(InteractionContractError);
+  if (!(rejection.cause instanceof InteractionContractError)) {
+    throw new Error("Expected InteractionContractError.");
+  }
+  return rejection.cause;
+}
+
+function pluginError(rejection: unknown): TypeScriptGenerationError {
+  expect(rejection).toBeInstanceOf(PluginExecutionError);
+  if (!(rejection instanceof PluginExecutionError)) {
+    throw new Error("Expected PluginExecutionError.");
+  }
+  expect(rejection.pluginName).toBe("typescript");
+  expect(rejection.cause).toBeInstanceOf(TypeScriptGenerationError);
+  if (!(rejection.cause instanceof TypeScriptGenerationError)) {
+    throw new Error("Expected TypeScriptGenerationError.");
+  }
+  return rejection.cause;
+}
 
 async function compileArtifacts(
   id: string,
@@ -83,58 +132,75 @@ describe("TypeScript output conformance corpus", () => {
 
   it.each(corpus)("conforms: $id", async (corpusCase) => {
     const input = await readFile(caseFileUrl(corpusCase, corpusCase.input), "utf8");
+    const resolver = corpusCase.resolver === true ? resolverOptions() : undefined;
+    const parserOptions: Record<string, unknown> = {};
+    if (corpusCase.schemaParser === "avro") {
+      parserOptions.parser = {
+        schemaParsers: [
+          {
+            getMimeTypes() {
+              return ["application/vnd.apache.avro+json;version=1.11.0"];
+            },
+            validate() {},
+            parse() {
+              return { type: "object" };
+            },
+          },
+        ],
+      };
+    } else if (corpusCase.schemaParser === "draft07-unchecked") {
+      parserOptions.parser = {
+        schemaParsers: [
+          {
+            getMimeTypes() {
+              return ["application/schema+json;version=draft-07"];
+            },
+            validate() {},
+            parse() {
+              return { $ref: "https://example.com/Event.schema.json" };
+            },
+          },
+        ],
+      };
+    } else if (resolver !== undefined) {
+      parserOptions.parser = resolver.parser;
+    }
+
     const generate = () =>
       run({
         input,
         parser: {
           parse: { source: caseFileUrl(corpusCase, corpusCase.input).href },
-          ...(corpusCase.schemaParser === undefined
-            ? {}
-            : {
-                parser: {
-                  schemaParsers: [
-                    corpusCase.schemaParser === "avro"
-                      ? {
-                          getMimeTypes() {
-                            return ["application/vnd.apache.avro+json;version=1.11.0"];
-                          },
-                          validate() {},
-                          parse() {
-                            return { type: "object" };
-                          },
-                        }
-                      : {
-                          getMimeTypes() {
-                            return ["application/schema+json;version=draft-07"];
-                          },
-                          validate() {},
-                          parse() {
-                            return { $ref: "https://example.com/Event.schema.json" };
-                          },
-                        },
-                  ],
-                },
-              }),
+          ...parserOptions,
         },
         plugins: [typescript()],
       });
 
-    if (corpusCase.expected.kind === "error") {
-      const reject = async (): Promise<TypeScriptGenerationError> => {
-        const rejection = await generate().catch((error: unknown) => error);
-        expect(rejection).toBeInstanceOf(PluginExecutionError);
-        if (!(rejection instanceof PluginExecutionError)) {
-          throw new Error(`Corpus case ${corpusCase.id} did not fail in the plugin pipeline.`);
-        }
-        expect(rejection.pluginName).toBe("typescript");
-        expect(rejection.cause).toBeInstanceOf(TypeScriptGenerationError);
-        if (!(rejection.cause instanceof TypeScriptGenerationError)) {
-          throw new Error(`Corpus case ${corpusCase.id} did not expose a generation error.`);
-        }
-        return rejection.cause;
-      };
-      const first = await reject();
-      const second = await reject();
+    if (corpusCase.expected.kind === "core-error") {
+      const reject = coreError;
+      const first = await reject(await generate().catch((error: unknown) => error));
+      const second = await reject(await generate().catch((error: unknown) => error));
+      expect(first).toMatchObject({
+        code: corpusCase.expected.code,
+        pointer: corpusCase.expected.pointer,
+      });
+      expect({ code: second.code, pointer: second.pointer, details: second.details }).toEqual({
+        code: first.code,
+        pointer: first.pointer,
+        details: first.details,
+      });
+      // Interaction construction performs no additional resolution: the two
+      // runs each trigger exactly one initial-parse resolve, never an extra.
+      if (resolver !== undefined) {
+        expect(resolver.reads).toEqual(["memory://schemas/Payload", "memory://schemas/Payload"]);
+      }
+      return;
+    }
+
+    if (corpusCase.expected.kind === "plugin-error") {
+      const reject = pluginError;
+      const first = await reject(await generate().catch((error: unknown) => error));
+      const second = await reject(await generate().catch((error: unknown) => error));
       expect(first).toMatchObject({
         code: corpusCase.expected.code,
         pointer: corpusCase.expected.pointer,

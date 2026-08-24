@@ -4,7 +4,7 @@
   "schemaParser": "avro",
   "tags": ["unsupported-format"],
   "expected": {
-    "kind": "error",
+    "kind": "plugin-error",
     "code": "TYPESCRIPT_FORMAT_UNSUPPORTED",
     "pointer": "/components/schemas/Event"
   }

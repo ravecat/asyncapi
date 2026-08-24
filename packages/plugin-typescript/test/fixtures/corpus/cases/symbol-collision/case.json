@@ -3,7 +3,7 @@
   "version": "3.1.0",
   "tags": ["collision"],
   "expected": {
-    "kind": "error",
+    "kind": "plugin-error",
     "code": "TYPESCRIPT_SYMBOL_COLLISION",
     "pointer": "/components/messages/Foo"
   }

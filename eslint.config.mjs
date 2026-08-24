@@ -11,12 +11,13 @@ export default [
       "tmp/**",
       "src/**/__snapshots__/**",
       "test/**/__snapshots__/**",
+      "**/test/fixtures/corpus/cases/*/expected/**",
     ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/src/**/*.ts", "**/test/**/*.ts", "**/test/**/*.mjs"],
+    files: ["**/src/**/*.ts", "**/test/**/*.ts", "**/test/**/*.mjs", "**/scripts/**/*.mjs"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

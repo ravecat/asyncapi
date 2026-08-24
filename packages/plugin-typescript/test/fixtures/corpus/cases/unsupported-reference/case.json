@@ -4,7 +4,7 @@
   "schemaParser": "draft07-unchecked",
   "tags": ["unsupported-reference"],
   "expected": {
-    "kind": "error",
+    "kind": "plugin-error",
     "code": "TYPESCRIPT_SCHEMA_UNSUPPORTED",
     "pointer": "/components/schemas/Event"
   }
