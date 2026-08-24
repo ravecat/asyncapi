@@ -1,0 +1,23 @@
+{
+  "asyncapi": "3.1.0",
+  "info": { "title": "Anonymous recursion schema", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "Doc": {
+        "type": "object",
+        "properties": {
+          "meta": { "type": "string" },
+          "root": {
+            "type": "object",
+            "properties": {
+              "b": {
+                "type": "object",
+                "properties": { "a": { "$ref": "#/components/schemas/Doc/properties/root" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

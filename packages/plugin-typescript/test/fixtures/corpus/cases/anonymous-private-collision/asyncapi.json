@@ -1,0 +1,21 @@
+{
+  "asyncapi": "3.1.0",
+  "info": { "title": "Private collision", "version": "1.0.0" },
+  "components": {
+    "schemas": {
+      "Collide": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "type": "object",
+            "properties": { "back": { "$ref": "#/components/schemas/Collide/properties/a" } }
+          },
+          "A": {
+            "type": "object",
+            "properties": { "back": { "$ref": "#/components/schemas/Collide/properties/A" } }
+          }
+        }
+      }
+    }
+  }
+}

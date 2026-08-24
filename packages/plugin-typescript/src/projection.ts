@@ -1,6 +1,7 @@
 import type { InteractionContract, SchemaContract, SchemaRoleContract } from "@opalesce/core";
 import { TypeScriptGenerationError } from "./errors.js";
-import type { JsonLiteral, TargetProperty, TargetType } from "./target.js";
+import { buildOwnerGraph } from "./owner-graph.js";
+import type { JsonLiteral, TargetDeclaration, TargetProperty, TargetType } from "./target.js";
 
 const UNKNOWN: TargetType = Object.freeze({ kind: "unknown" });
 const NEVER: TargetType = Object.freeze({ kind: "never" });
@@ -330,8 +331,18 @@ function encodeAnnotation(value: unknown): string | undefined {
   }
 }
 
+export interface ProjectionResult {
+  readonly type: TargetType;
+  readonly privateDeclarations: readonly TargetDeclaration[];
+}
+
+export interface OwnerProjectionOptions {
+  readonly identity: string;
+  readonly name: string;
+}
+
 export interface SchemaProjector {
-  project(role: SchemaRoleContract, declarationRootIdentity?: string): TargetType;
+  project(role: SchemaRoleContract, owner?: OwnerProjectionOptions): ProjectionResult;
 }
 
 export function createSchemaProjector(interaction: InteractionContract): SchemaProjector {
@@ -556,6 +567,7 @@ export function createSchemaProjector(interaction: InteractionContract): SchemaP
     declarationRootIdentity: string | undefined,
     root: boolean,
     visiting: WeakSet<object>,
+    privateReferences: WeakMap<object, string>,
   ): TargetType => {
     const reference = referencedIdentity(schema);
     if (reference !== undefined && (!root || reference !== declarationRootIdentity)) {
@@ -565,8 +577,12 @@ export function createSchemaProjector(interaction: InteractionContract): SchemaP
     const object = parserObject(schema);
     if (object !== undefined) {
       if (visiting.has(object)) {
+        const privateReference = privateReferences.get(object);
         if (reference !== undefined) {
           return Object.freeze({ kind: "reference", targetIdentity: reference });
+        }
+        if (privateReference !== undefined) {
+          return Object.freeze({ kind: "reference", targetIdentity: privateReference });
         }
         throw new TypeScriptGenerationError(
           "TYPESCRIPT_SCHEMA_UNSUPPORTED",
@@ -578,7 +594,7 @@ export function createSchemaProjector(interaction: InteractionContract): SchemaP
     }
 
     const projectChild = (child: SchemaInterface): TargetType =>
-      projectNative(child, declarationRootIdentity, false, visiting);
+      projectNative(child, declarationRootIdentity, false, visiting, privateReferences);
 
     let result: TargetType;
     if (schema.isBooleanSchema()) {
@@ -694,16 +710,64 @@ export function createSchemaProjector(interaction: InteractionContract): SchemaP
   };
 
   return Object.freeze({
-    project(role: SchemaRoleContract, declarationRootIdentity?: string): TargetType {
+    project(role: SchemaRoleContract, owner?: OwnerProjectionOptions): ProjectionResult {
       assertFormat(role.schemaFormat, role.pointer);
       const rawSchema = wrappedSchema(role.schema);
       if (
         role.schemaFormat === "application/schema+json;version=draft-07" &&
         rawSchema !== undefined
       ) {
-        return projectRawSchema(rawSchema, role.pointer, declarationRootIdentity);
+        return Object.freeze({
+          type: projectRawSchema(rawSchema, role.pointer, owner?.identity),
+          privateDeclarations: Object.freeze([]),
+        });
       }
-      return projectNative(role.schema, declarationRootIdentity, true, new WeakSet());
+
+      const componentObject = new WeakMap<object, string>();
+      for (const schema of interaction.schemas) {
+        const object = parserObject(schema.schema);
+        if (object !== undefined) {
+          componentObject.set(object, schema.identity);
+        }
+        identityById.set(schema.schema.id(), schema.identity);
+      }
+
+      const privateReferences = new WeakMap<object, string>();
+      if (owner !== undefined) {
+        const graph = buildOwnerGraph(role.schema, owner.identity, owner.name, componentObject);
+        for (const [key, identity] of graph.allReferenceEntries) {
+          privateReferences.set(key, identity);
+        }
+        const privateDeclarations = graph.privateRoots.map(
+          (root): TargetDeclaration =>
+            Object.freeze({
+              identity: root.identity,
+              name: root.name,
+              type: projectNative(
+                root.schema,
+                root.identity,
+                true,
+                new WeakSet(),
+                privateReferences,
+              ),
+              visibility: "file-local",
+              documentation: schemaDocumentation(root.schema),
+            }),
+        );
+        const type = projectNative(
+          role.schema,
+          owner.identity,
+          true,
+          new WeakSet(),
+          privateReferences,
+        );
+        return Object.freeze({ type, privateDeclarations });
+      }
+
+      return Object.freeze({
+        type: projectNative(role.schema, undefined, true, new WeakSet(), privateReferences),
+        privateDeclarations: Object.freeze([]),
+      });
     },
   });
 }

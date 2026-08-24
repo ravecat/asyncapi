@@ -1,0 +1,23 @@
+{
+  "asyncapi": "3.1.0",
+  "info": { "title": "Anonymous recursion message", "version": "1.0.0" },
+  "channels": {
+    "events": {
+      "address": "events",
+      "messages": {
+        "Ev": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "value": { "type": "string" },
+              "child": {
+                "type": "object",
+                "properties": { "next": { "$ref": "#/channels/events/messages/Ev/payload" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

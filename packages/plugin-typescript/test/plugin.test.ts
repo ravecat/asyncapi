@@ -291,6 +291,7 @@ describe("typescript", () => {
             name: "broken-name",
             type: { kind: "string" },
             documentation: [],
+            visibility: "public",
           },
         ],
         exports: [],

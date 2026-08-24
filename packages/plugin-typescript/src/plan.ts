@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import type { InteractionContract, MessageContract, SchemaRoleContract } from "@opalesce/core";
+import type { InteractionContract, MessageContract } from "@opalesce/core";
 import { TypeScriptGenerationError } from "./errors.js";
 import { assertPortableFilename, pascalCase, portableFilenameKey } from "./naming.js";
 import { createSchemaProjector, schemaRoleDocumentation } from "./projection.js";
@@ -111,13 +111,6 @@ function messageBaseName(
   }
   const owner = channelNameByIdentity.get(message.ownerIdentity);
   return owner === undefined ? own : `${owner}${own}`;
-}
-
-function roleType(
-  role: SchemaRoleContract | undefined,
-  project: (role: SchemaRoleContract) => TargetType,
-): TargetType {
-  return role === undefined ? Object.freeze({ kind: "unknown" }) : project(role);
 }
 
 export function planFiles(
@@ -259,14 +252,17 @@ export function planFiles(
     if (symbol === undefined) {
       continue;
     }
+    const result = projector.project(schema, { identity: schema.identity, name: symbol.name });
     drafts.get(symbol.path)?.declarations.push(
       Object.freeze({
         identity: symbol.identity,
         name: symbol.name,
-        type: projector.project(schema, schema.identity),
+        type: result.type,
         documentation: schemaRoleDocumentation(schema),
+        visibility: "public",
       }),
     );
+    drafts.get(symbol.path)?.declarations.push(...result.privateDeclarations);
   }
 
   for (const message of interaction.messages) {
@@ -279,17 +275,29 @@ export function planFiles(
     if (file === undefined) {
       continue;
     }
+    const payloadResult =
+      message.payload === undefined
+        ? Object.freeze({
+            type: Object.freeze({ kind: "unknown" }),
+            privateDeclarations: Object.freeze([]),
+          })
+        : projector.project(message.payload, {
+            identity: payloadSymbol.identity,
+            name: payloadSymbol.name,
+          });
     file.declarations.push(
       Object.freeze({
         identity: payloadSymbol.identity,
         name: payloadSymbol.name,
-        type: roleType(message.payload, (role) => projector.project(role)),
+        type: payloadResult.type,
         documentation:
           message.payload === undefined
             ? Object.freeze([])
             : schemaRoleDocumentation(message.payload),
+        visibility: "public",
       }),
     );
+    file.declarations.push(...payloadResult.privateDeclarations);
     const wrapperProperties: TargetProperty[] = [
       Object.freeze({
         name: "payload",
@@ -302,14 +310,20 @@ export function planFiles(
     if (message.headers !== undefined) {
       const headerSymbol = symbols.get(`${message.identity}:headers`);
       if (headerSymbol !== undefined) {
+        const headerResult = projector.project(message.headers, {
+          identity: headerSymbol.identity,
+          name: headerSymbol.name,
+        });
         file.declarations.push(
           Object.freeze({
             identity: headerSymbol.identity,
             name: headerSymbol.name,
-            type: projector.project(message.headers),
+            type: headerResult.type,
             documentation: schemaRoleDocumentation(message.headers),
+            visibility: "public",
           }),
         );
+        file.declarations.push(...headerResult.privateDeclarations);
         wrapperProperties.push(
           Object.freeze({
             name: "headers",
@@ -329,6 +343,7 @@ export function planFiles(
         documentation: Object.freeze(
           message.description === undefined ? [] : [message.description],
         ),
+        visibility: "public",
       }),
     );
   }
@@ -338,16 +353,25 @@ export function planFiles(
     if (symbol === undefined) {
       continue;
     }
-    const properties = channel.parameters.map(
-      (parameter): TargetProperty =>
+    const properties: TargetProperty[] = [];
+    const parameterPrivateDeclarations: TargetDeclaration[] = [];
+    for (const parameter of channel.parameters) {
+      const parameterResult =
+        parameter.schema === undefined
+          ? Object.freeze({
+              type: Object.freeze({ kind: "string" }),
+              privateDeclarations: Object.freeze([]),
+            })
+          : projector.project(parameter.schema, {
+              identity: `${symbol.identity}:${parameter.name}`,
+              name: `${symbol.name}${pascalCase(parameter.name, parameter.pointer)}`,
+            });
+      properties.push(
         Object.freeze({
           name: parameter.name,
           optional: false,
           readonly: false,
-          type:
-            parameter.schema === undefined
-              ? Object.freeze({ kind: "string" })
-              : projector.project(parameter.schema),
+          type: parameterResult.type,
           documentation: Object.freeze([
             ...new Set([
               ...(parameter.description === undefined ? [] : [parameter.description]),
@@ -355,7 +379,9 @@ export function planFiles(
             ]),
           ]),
         }),
-    );
+      );
+      parameterPrivateDeclarations.push(...parameterResult.privateDeclarations);
+    }
     drafts.get(symbol.path)?.declarations.push(
       Object.freeze({
         identity: symbol.identity,
@@ -364,8 +390,10 @@ export function planFiles(
         documentation: Object.freeze(
           channel.description === undefined ? [] : [channel.description],
         ),
+        visibility: "public",
       }),
     );
+    drafts.get(symbol.path)?.declarations.push(...parameterPrivateDeclarations);
   }
 
   for (const operation of interaction.operations) {
@@ -388,6 +416,7 @@ export function planFiles(
           ...(operation.summary === undefined ? [] : [operation.summary]),
           ...(operation.description === undefined ? [] : [operation.description]),
         ]),
+        visibility: "public",
       }),
     );
     if (operation.replyIdentity !== undefined) {
@@ -404,6 +433,7 @@ export function planFiles(
               reply.messageIdentities.map((identity) => reference(`${identity}:message`)),
             ),
             documentation: Object.freeze([]),
+            visibility: "public",
           }),
         );
       }
@@ -415,10 +445,19 @@ export function planFiles(
     .map((draft): PlannedFile => {
       const importedNamesByPath = new Map<string, Set<string>>();
       const referenceNames = new Map<string, string>();
+      const localNames = new Map<string, string>();
+      for (const declaration of draft.declarations) {
+        localNames.set(declaration.identity, declaration.name);
+      }
       for (const declaration of draft.declarations) {
         const references = new Set<string>();
         collectReferences(declaration.type, references);
         for (const identity of references) {
+          const localName = localNames.get(identity);
+          if (localName !== undefined) {
+            referenceNames.set(identity, localName);
+            continue;
+          }
           const symbol = symbols.get(identity);
           if (symbol === undefined) {
             throw new TypeScriptGenerationError(

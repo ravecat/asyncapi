@@ -195,7 +195,9 @@ export function renderFile(file: PlannedFile): string {
     statements.push(
       withDocumentation(
         ts.factory.createTypeAliasDeclaration(
-          [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
+          declaration.visibility === "file-local"
+            ? undefined
+            : [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
           declaration.name,
           undefined,
           typeNode(declaration.type, referenceNames),

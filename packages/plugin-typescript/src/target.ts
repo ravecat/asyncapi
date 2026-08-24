@@ -32,4 +32,5 @@ export interface TargetDeclaration {
   readonly name: string;
   readonly type: TargetType;
   readonly documentation: readonly string[];
+  readonly visibility: "public" | "file-local";
 }

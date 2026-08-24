@@ -192,4 +192,102 @@ describe("schema projection", () => {
     expect(right?.contents).toContain('import type { Left } from "./Left.js";');
     expect(right?.contents).toContain("left?: Left;");
   });
+
+  it("emits file-local private aliases for anonymous recursion and compiles it", async () => {
+    const input: Input = {
+      asyncapi: "3.1.0",
+      info: { title: "Recursion", version: "1.0.0" },
+      components: {
+        schemas: {
+          Doc: {
+            type: "object",
+            properties: {
+              meta: { type: "string" },
+              root: {
+                type: "object",
+                properties: {
+                  b: {
+                    type: "object",
+                    properties: { a: { $ref: "#/components/schemas/Doc/properties/root" } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = await run({ input, plugins: [typescript()] });
+    const doc = result.artifacts.find((artifact) => artifact.path.endsWith("/schemas/Doc.ts"));
+    const barrel = result.artifacts.find((artifact) => artifact.path.endsWith("/index.ts"));
+
+    expect(doc?.contents).toContain("type DocRoot");
+    expect(doc?.contents).toContain("type DocRootB");
+    // File-local aliases are never exported nor referenced cross-file.
+    expect(doc?.contents).not.toContain("export type DocRoot");
+    expect(doc?.contents).not.toContain("import type { DocRoot");
+    expect(barrel?.contents).not.toContain("DocRoot");
+  });
+
+  it("emits private aliases for a message-owned recursive payload in the message file", async () => {
+    const input: Input = {
+      asyncapi: "3.1.0",
+      info: { title: "Message recursion", version: "1.0.0" },
+      channels: {
+        events: {
+          address: "events",
+          messages: {
+            Ev: {
+              payload: {
+                type: "object",
+                properties: {
+                  value: { type: "string" },
+                  child: {
+                    type: "object",
+                    properties: { next: { $ref: "#/channels/events/messages/Ev/payload" } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = await run({ input, plugins: [typescript()] });
+    const message = result.artifacts.find((artifact) => artifact.path.includes("/messages/"));
+    const barrel = result.artifacts.find((artifact) => artifact.path.endsWith("/index.ts"));
+
+    expect(message?.contents).toContain("type EventsEvPayloadChild");
+    expect(message?.contents).not.toContain("export type EventsEvPayloadChild");
+    expect(barrel?.contents).not.toContain("EventsEvPayloadChild");
+  });
+
+  it("keeps acyclic anonymous wrapping inline without private aliases", async () => {
+    const input: Input = {
+      asyncapi: "3.1.0",
+      info: { title: "Acyclic", version: "1.0.0" },
+      components: {
+        schemas: {
+          Node: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              child: {
+                type: "object",
+                properties: { node: { $ref: "#/components/schemas/Node" } },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const result = await run({ input, plugins: [typescript()] });
+    const node = result.artifacts.find((artifact) => artifact.path.endsWith("/schemas/Node.ts"));
+
+    expect(node?.contents).toContain("node?: Node;");
+    expect(node?.contents).not.toMatch(/^type Node[A-Z]/mu);
+  });
 });

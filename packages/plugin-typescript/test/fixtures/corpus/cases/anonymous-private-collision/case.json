@@ -1,0 +1,10 @@
+{
+  "input": "asyncapi.json",
+  "version": "3.1.0",
+  "tags": ["collision", "self-recursive", "anonymous-recursion"],
+  "expected": {
+    "kind": "plugin-error",
+    "code": "TYPESCRIPT_SYMBOL_COLLISION",
+    "pointer": "/components/schemas/Collide/properties/A"
+  }
+}
