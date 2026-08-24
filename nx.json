@@ -54,6 +54,14 @@
   "release": {
     "projects": ["packages/*"],
     "projectsRelationship": "independent",
+    "conventionalCommits": {
+      "useCommitScope": false,
+      "types": {
+        "feat": {
+          "semverBump": "major"
+        }
+      }
+    },
     "releaseTag": {
       "pattern": "{projectName}@{version}",
       "requireSemver": true
@@ -66,6 +74,7 @@
     "version": {
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",
+      "adjustSemverBumpsForZeroMajorVersion": true,
       "updateDependents": "always",
       "preserveLocalDependencyProtocols": true
     },
