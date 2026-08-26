@@ -8,40 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  preview-release:
-    name: Preview npm release
-    runs-on: ubuntu-latest
-    if: github.ref_name == github.event.repository.default_branch
-    defaults:
-      run:
-        shell: nix develop --command bash --noprofile --norc -eo pipefail {0}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          filter: tree:0
-          persist-credentials: false
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v17
-
-      - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@v13
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check workspace
-        run: just check
-
-      - name: Preview release
-        run: pnpm exec nx release --dry-run --skip-publish
-
   release-packages:
     name: Release npm packages
-    needs: preview-release
     runs-on: ubuntu-latest
     if: github.ref_name == github.event.repository.default_branch
     concurrency:
@@ -77,6 +45,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check workspace
+        run: just check
 
       - name: Create release commit and tags
         env:
