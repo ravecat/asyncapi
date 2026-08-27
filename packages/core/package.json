@@ -1,6 +1,6 @@
 {
   "name": "@opalesce/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Transform AsyncAPI specifications into artifacts with Opalesce's plugin-based generation engine.",
   "keywords": [
     "artifact-generator",

@@ -1,6 +1,6 @@
 {
   "name": "@opalesce/config",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Type-safe project configuration for generating artifacts from AsyncAPI specifications with Opalesce.",
   "keywords": [
     "artifact-generator",
